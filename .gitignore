@@ -1,0 +1,12 @@
+venv/
+env/
+myenv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+Thumbs.db
+.ipynb_checkpoints/
+kaggle (1).json
+desktop.ini
