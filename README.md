@@ -56,7 +56,7 @@ The following screenshots demonstrate real-time American Sign Language (ASL) alp
 
 | X Alphabet | E Alphabet |
 |---|---|
-| ![X Alphabet](Screenshots/X%20alphabet.png) | ![E Alphabet](Screenshots/E%20alphabet.png) |
+| ![X Alphabet](Screenshots/%20X%20alphabet.png) | ![E Alphabet](Screenshots/E%20alphabet.png) |
 
 | I Alphabet | O Alphabet |
 |---|---|
