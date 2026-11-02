@@ -50,7 +50,21 @@ python main.py
 * The output is displayed on the frame in real time.
 
 ---
+## 📸 Application Screenshots
 
+The following screenshots demonstrate real-time American Sign Language (ASL) alphabet recognition using the webcam.
+
+| X Alphabet | E Alphabet |
+|---|---|
+| ![X Alphabet](Screenshots/X%20alphabet.png) | ![E Alphabet](Screenshots/E%20alphabet.png) |
+
+| I Alphabet | O Alphabet |
+|---|---|
+| ![I Alphabet](Screenshots/I%20alphabet.png) | ![O Alphabet](Screenshots/O%20alphabet.png) |
+
+| R Alphabet | Y Alphabet |
+|---|---|
+| ![R Alphabet](Screenshots/R%20alphabet.png) | ![Y Alphabet](Screenshots/Y%20alphabet.png) |
 ## 📦 Dependencies
 
 Listed in `requirements.txt`:
