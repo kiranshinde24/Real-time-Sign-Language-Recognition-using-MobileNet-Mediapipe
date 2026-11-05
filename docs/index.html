@@ -238,9 +238,9 @@
 
   async function handleResults(r) {
     var W = frame.width, H = frame.height;
-    vctx.drawImage(frame, 0, 0, W, H);
 
     if (!r || !r.multiHandLandmarks || !r.multiHandLandmarks.length) {
+      vctx.drawImage(frame, 0, 0, W, H);
       history = [];
       resetHud();
       setStatus('No hand detected', 'warn');
@@ -258,7 +258,7 @@
     var x1 = Math.min(W, Math.floor(maxX * W) + MARGIN);
     var y1 = Math.min(H, Math.floor(maxY * H) + MARGIN);
     var bw = x1 - x0, bh = y1 - y0;
-    if (bw < 16 || bh < 16) { setStatus('Move your hand closer', 'warn'); return; }
+    if (bw < 16 || bh < 16) { vctx.drawImage(frame, 0, 0, W, H); setStatus('Move your hand closer', 'warn'); return; }
 
     var probsTensor = tf.tidy(function () {
       var img = tf.browser.fromPixels(frame);                       // RGB, same order as training
@@ -279,7 +279,8 @@
     var sure = conf >= MIN_CONF;
     var letter = CLASSES[best];
 
-    // overlay
+    // draw the frame and the overlay in one go so the box is never wiped by a later redraw
+    vctx.drawImage(frame, 0, 0, W, H);
     vctx.lineWidth = 3;
     vctx.strokeStyle = sure ? '#22c55e' : '#f59e0b';
     vctx.strokeRect(x0, y0, bw, bh);
