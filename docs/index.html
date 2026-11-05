@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Real-Time ASL Recognition</title>
+<meta name="description" content="Real-time American Sign Language letter recognition in your browser using MediaPipe and MobileNetV2. Runs fully on your device.">
+<style>
+  :root {
+    --bg: #f5f7fb; --card: #ffffff; --text: #0f172a; --muted: #64748b;
+    --accent: #2563eb; --accent-text: #ffffff; --border: #e2e8f0;
+    --ok: #15803d; --warn: #b45309; --bad: #b91c1c; --stage: #0b1220;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b1220; --card: #121a2b; --text: #e5e9f2; --muted: #94a3b8;
+      --accent: #60a5fa; --accent-text: #0b1220; --border: #243049;
+      --ok: #4ade80; --warn: #fbbf24; --bad: #f87171; --stage: #000000;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: clamp(1.5rem, 4vw, 2rem); margin: 0 0 4px; letter-spacing: -0.02em; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+    padding: 16px; display: grid; gap: 16px;
+  }
+  .stage {
+    position: relative; background: var(--stage); border-radius: 12px; overflow: hidden;
+    aspect-ratio: 4 / 3; display: grid; place-items: center;
+  }
+  canvas { width: 100%; height: 100%; display: block; }
+  .placeholder { position: absolute; inset: 0; display: grid; place-items: center; text-align: center;
+    color: #cbd5e1; padding: 24px; font-size: 0.95rem; }
+  .hud { display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: center; }
+  .letter {
+    width: 96px; height: 96px; border-radius: 16px; display: grid; place-items: center;
+    font-size: 3.5rem; font-weight: 700; background: var(--bg); border: 1px solid var(--border);
+  }
+  .meta { display: grid; gap: 8px; min-width: 0; }
+  .bar { height: 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
+  .bar > span { display: block; height: 100%; width: 0%; background: var(--accent); transition: width 0.12s linear; }
+  .row { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 0.9rem; }
+  #status { font-weight: 600; }
+  #status.ok { color: var(--ok); } #status.warn { color: var(--warn); } #status.bad { color: var(--bad); }
+  button {
+    appearance: none; border: 0; border-radius: 12px; padding: 12px 18px; font: inherit; font-weight: 600;
+    background: var(--accent); color: var(--accent-text); cursor: pointer;
+  }
+  button:disabled { opacity: 0.6; cursor: progress; }
+  button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  h2 { font-size: 1.05rem; margin: 28px 0 8px; }
+  ul { margin: 0; padding-left: 1.2rem; color: var(--muted); }
+  li { margin: 4px 0; }
+  a { color: var(--accent); }
+  footer { margin-top: 28px; color: var(--muted); font-size: 0.9rem; }
+  @media (max-width: 420px) { .letter { width: 72px; height: 72px; font-size: 2.5rem; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Real-Time ASL Recognition</h1>
+  <p class="sub">Show an ASL letter (A–Z) to your webcam. Everything runs in your browser; no video is uploaded.</p>
+
+  <div class="card">
+    <div class="stage">
+      <canvas id="view" width="640" height="480" aria-label="Webcam view with detected hand"></canvas>
+      <div class="placeholder" id="placeholder">Press “Start camera” and allow camera access.</div>
+    </div>
+
+    <div class="hud">
+      <div class="letter" id="letter" aria-live="polite">–</div>
+      <div class="meta">
+        <div id="status" role="status">Ready</div>
+        <div class="bar" aria-hidden="true"><span id="conf"></span></div>
+        <div class="row"><span id="confText">Confidence: –</span><span id="fps"></span></div>
+      </div>
+    </div>
+
+    <button id="toggle" type="button">Start camera</button>
+  </div>
+
+  <h2>Tips for best results</h2>
+  <ul>
+    <li>Use good, even lighting and a plain background.</li>
+    <li>Keep one hand fully inside the frame, close enough to fill a good part of it.</li>
+    <li>J and Z involve motion, so a single-frame model can’t recognise them reliably.</li>
+    <li>Works best in a recent Chrome or Edge on a laptop. The first load downloads about 10 MB.</li>
+  </ul>
+
+  <footer>
+    MediaPipe Hands for hand tracking and a MobileNetV2 classifier trained on the
+    <a href="https://www.kaggle.com/datasets/grassknoted/asl-alphabet">ASL Alphabet dataset</a>.
+    Source code:
+    <a href="https://github.com/kiranshinde24/Real-time-Sign-Language-Recognition-using-MobileNet-Mediapipe">GitHub</a>.
+  </footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
+<script>
+(function () {
+  'use strict';
+
+  var CLASSES = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+  var MARGIN = 30;        // pixels around the hand box, same as realtime_asl.py
+  var WINDOW = 5;         // frames averaged to steady the prediction
+  var MIN_CONF = 0.5;     // below this the letter is shown as uncertain
+  var MODEL_URL = 'model/model.json';
+  var HANDS_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/';
+
+  var video = document.createElement('video');
+  video.playsInline = true;
+  video.muted = true;
+
+  var view = document.getElementById('view');
+  var vctx = view.getContext('2d');
+  var frame = document.createElement('canvas');   // mirrored frame, like cv2.flip in the Python script
+  var fctx = frame.getContext('2d', { willReadFrequently: true });
+
+  var el = {
+    toggle: document.getElementById('toggle'),
+    status: document.getElementById('status'),
+    letter: document.getElementById('letter'),
+    conf: document.getElementById('conf'),
+    confText: document.getElementById('confText'),
+    fps: document.getElementById('fps'),
+    placeholder: document.getElementById('placeholder')
+  };
+
+  var model = null, hands = null, stream = null;
+  var running = false, history = [], lastResults = null;
+  var frames = 0, fpsStart = 0;
+
+  function setStatus(text, kind) {
+    el.status.textContent = text;
+    el.status.className = kind || '';
+  }
+
+  function resetHud() {
+    el.letter.textContent = '–';
+    el.conf.style.width = '0%';
+    el.confText.textContent = 'Confidence: –';
+  }
+
+  async function loadEverything() {
+    if (!model) {
+      setStatus('Loading model…');
+      model = await tf.loadGraphModel(MODEL_URL);
+      var warm = model.predict(tf.zeros([1, 224, 224, 3]));   // compile shaders once
+      await warm.data();
+      warm.dispose();
+    }
+    if (!hands) {
+      setStatus('Loading hand tracker…');
+      hands = new Hands({ locateFile: function (f) { return HANDS_URL + f; } });
+      hands.setOptions({ maxNumHands: 1, modelComplexity: 1,
+                         minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+      hands.onResults(function (r) { lastResults = r; });
+      await hands.initialize();
+    }
+  }
+
+  async function start() {
+    el.toggle.disabled = true;
+    try {
+      await loadEverything();
+      setStatus('Starting camera…');
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }, audio: false
+      });
+      video.srcObject = stream;
+      await video.play();
+      frame.width = view.width = video.videoWidth || 640;
+      frame.height = view.height = video.videoHeight || 480;
+      el.placeholder.style.display = 'none';
+      running = true; history = []; frames = 0; fpsStart = performance.now();
+      el.toggle.textContent = 'Stop camera';
+      setStatus('Looking for a hand…');
+      loop();
+    } catch (err) {
+      console.error(err);
+      var denied = err && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError');
+      setStatus(denied ? 'Camera permission denied. Allow camera access and try again.'
+                       : 'Could not start: ' + (err && err.message ? err.message : err), 'bad');
+      stop(true);
+    } finally {
+      el.toggle.disabled = false;
+    }
+  }
+
+  function stop(keepStatus) {
+    running = false;
+    if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
+    video.srcObject = null;
+    el.toggle.textContent = 'Start camera';
+    vctx.clearRect(0, 0, view.width, view.height);
+    el.placeholder.style.display = 'grid';
+    el.fps.textContent = '';
+    resetHud();
+    if (!keepStatus) setStatus('Stopped');
+  }
+
+  async function loop() {
+    while (running) {
+      try {
+        fctx.save();
+        fctx.translate(frame.width, 0);
+        fctx.scale(-1, 1);
+        fctx.drawImage(video, 0, 0, frame.width, frame.height);
+        fctx.restore();
+
+        lastResults = null;
+        await hands.send({ image: frame });
+        await handleResults(lastResults);
+
+        frames++;
+        var now = performance.now();
+        if (now - fpsStart >= 1000) {
+          el.fps.textContent = Math.round(frames * 1000 / (now - fpsStart)) + ' fps';
+          frames = 0; fpsStart = now;
+        }
+      } catch (err) {
+        console.error(err);
+        setStatus('Error: ' + (err && err.message ? err.message : err), 'bad');
+        stop(true);
+        return;
+      }
+      await new Promise(requestAnimationFrame);
+    }
+  }
+
+  async function handleResults(r) {
+    var W = frame.width, H = frame.height;
+    vctx.drawImage(frame, 0, 0, W, H);
+
+    if (!r || !r.multiHandLandmarks || !r.multiHandLandmarks.length) {
+      history = [];
+      resetHud();
+      setStatus('No hand detected', 'warn');
+      return;
+    }
+
+    var lms = r.multiHandLandmarks[0];
+    var minX = 1, minY = 1, maxX = 0, maxY = 0;
+    for (var i = 0; i < lms.length; i++) {
+      minX = Math.min(minX, lms[i].x); maxX = Math.max(maxX, lms[i].x);
+      minY = Math.min(minY, lms[i].y); maxY = Math.max(maxY, lms[i].y);
+    }
+    var x0 = Math.max(0, Math.floor(minX * W) - MARGIN);
+    var y0 = Math.max(0, Math.floor(minY * H) - MARGIN);
+    var x1 = Math.min(W, Math.floor(maxX * W) + MARGIN);
+    var y1 = Math.min(H, Math.floor(maxY * H) + MARGIN);
+    var bw = x1 - x0, bh = y1 - y0;
+    if (bw < 16 || bh < 16) { setStatus('Move your hand closer', 'warn'); return; }
+
+    var probsTensor = tf.tidy(function () {
+      var img = tf.browser.fromPixels(frame);                       // RGB, same order as training
+      var crop = img.slice([y0, x0, 0], [bh, bw, 3]);
+      var resized = tf.image.resizeBilinear(crop, [224, 224], false, true);
+      return model.predict(resized.div(255).expandDims(0));
+    });
+    var p = await probsTensor.data();
+    probsTensor.dispose();
+
+    history.push(Float32Array.from(p));
+    if (history.length > WINDOW) history.shift();
+    var avg = new Float32Array(CLASSES.length);
+    history.forEach(function (h) { for (var k = 0; k < avg.length; k++) avg[k] += h[k] / history.length; });
+    var best = 0;
+    for (var j = 1; j < avg.length; j++) if (avg[j] > avg[best]) best = j;
+    var conf = avg[best];
+    var sure = conf >= MIN_CONF;
+    var letter = CLASSES[best];
+
+    // overlay
+    vctx.lineWidth = 3;
+    vctx.strokeStyle = sure ? '#22c55e' : '#f59e0b';
+    vctx.strokeRect(x0, y0, bw, bh);
+    vctx.fillStyle = vctx.strokeStyle;
+    for (var m = 0; m < lms.length; m++) {
+      vctx.beginPath(); vctx.arc(lms[m].x * W, lms[m].y * H, 3, 0, Math.PI * 2); vctx.fill();
+    }
+    vctx.font = 'bold 34px system-ui, sans-serif';
+    var label = sure ? letter : letter + '?';
+    var ty = y0 > 44 ? y0 - 10 : y0 + 34;
+    vctx.lineWidth = 5; vctx.strokeStyle = 'rgba(0,0,0,0.7)';
+    vctx.strokeText(label, x0 + 4, ty);
+    vctx.fillStyle = '#ffffff'; vctx.fillText(label, x0 + 4, ty);
+
+    // readout
+    el.letter.textContent = sure ? letter : '?';
+    el.conf.style.width = Math.round(conf * 100) + '%';
+    el.confText.textContent = 'Confidence: ' + Math.round(conf * 100) + '%';
+    setStatus(sure ? 'Hand detected' : 'Hand detected, not sure yet', sure ? 'ok' : 'warn');
+  }
+
+  el.toggle.addEventListener('click', function () { running ? stop() : start(); });
+  window.addEventListener('pagehide', function () { stop(true); });
+})();
+</script>
+</body>
+</html>
